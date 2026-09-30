@@ -1,0 +1,7 @@
+{
+  "name": "ai-code-reviewer",
+  "version": "1.0.0",
+  "description": "GenAI code reviewer: finds bugs, suggests improvements, generates docs",
+  "private": true,
+  "engines": { "node": ">=18" }
+}

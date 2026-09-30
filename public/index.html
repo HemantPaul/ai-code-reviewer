@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Code Reviewer</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--text:#1c2030;--muted:#667085;--line:#e4e7ee;--accent:#4f46e5;--code:#0f172a}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1117;--card:#161b22;--text:#e6edf3;--muted:#8b949e;--line:#30363d;--accent:#818cf8;--code:#010409}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--text)}
+.wrap{max-width:1000px;margin:0 auto;padding:24px 16px 60px}
+h1{margin:0 0 4px;font-size:1.7rem} .sub{color:var(--muted);margin:0 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+textarea{width:100%;min-height:260px;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;background:var(--code);color:#e6edf3;border:1px solid var(--line);border-radius:8px;padding:12px;resize:vertical}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:12px}
+select,button{font:inherit;padding:9px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--text)}
+button.primary{background:var(--accent);color:#fff;border:none;font-weight:600;cursor:pointer}
+button:disabled{opacity:.6;cursor:wait}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.tab{cursor:pointer}.tab.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.score{font-size:2rem;font-weight:700;color:var(--accent)}
+.item{border-left:4px solid var(--line);padding:8px 12px;margin:10px 0;background:var(--bg);border-radius:0 8px 8px 0}
+.critical{border-color:#dc2626}.high{border-color:#ea580c}.medium{border-color:#ca8a04}.low{border-color:#16a34a}
+.badge{font-size:.72rem;text-transform:uppercase;font-weight:700;color:var(--muted)}
+pre{background:var(--code);color:#e6edf3;padding:12px;border-radius:8px;overflow:auto;font-size:13px;white-space:pre-wrap}
+.err{color:#dc2626;font-weight:600}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🔍 AI Code Reviewer</h1>
+  <p class="sub">Paste your code. Get bug detection, improvement suggestions, and auto-generated docs.</p>
+
+  <div class="card">
+    <textarea id="code" placeholder="Paste your code here..."></textarea>
+    <div class="row">
+      <select id="lang">
+        <option value="">Auto-detect language</option>
+        <option>JavaScript</option><option>TypeScript</option><option>Python</option>
+        <option>Java</option><option>C</option><option>C++</option><option>Go</option><option>SQL</option>
+      </select>
+      <button class="primary" id="go">Review Code</button>
+      <button id="sample">Load sample</button>
+      <span id="status" class="sub"></span>
+    </div>
+  </div>
+
+  <div id="out" class="hide">
+    <div class="card">
+      <div class="row" style="margin:0"><div class="score" id="score"></div><div id="summary"></div></div>
+    </div>
+    <div class="tabs" id="tabs">
+      <button class="tab on" data-t="bugs">🐞 Bugs</button>
+      <button class="tab" data-t="imp">💡 Improvements</button>
+      <button class="tab" data-t="docs">📄 Docs</button>
+      <button class="tab" data-t="ref">✨ Refactored code</button>
+    </div>
+    <div class="card" id="panel"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let data = null, tab = "bugs";
+
+const SAMPLE = `def average(nums):
+    total = 0
+    for i in range(len(nums)+1):
+        total += nums[i]
+    return total / len(nums)
+
+print(average([]))`;
+
+function render() {
+  if (!data) return;
+  let h = "";
+  if (tab === "bugs") {
+    h = (data.bugs || []).length ? data.bugs.map(b => `
+      <div class="item ${esc(b.severity)}"><span class="badge">${esc(b.severity)}${b.line ? " · line " + esc(b.line) : ""}</span>
+      <div><b>${esc(b.title)}</b></div><div>${esc(b.explanation)}</div>
+      ${b.fix ? `<pre>${esc(b.fix)}</pre>` : ""}</div>`).join("") : "<p>✅ No bugs found.</p>";
+  } else if (tab === "imp") {
+    h = (data.improvements || []).map(i => `
+      <div class="item"><span class="badge">${esc(i.category)}</span>
+      <div><b>${esc(i.title)}</b></div><div>${esc(i.suggestion)}</div></div>`).join("") || "<p>No suggestions.</p>";
+  } else if (tab === "docs") {
+    h = `<button id="cp">Copy</button><pre>${esc(data.docs)}</pre>`;
+  } else {
+    h = `<button id="cp">Copy</button><pre>${esc(data.refactored_code)}</pre>`;
+  }
+  $("panel").innerHTML = h;
+  const cp = $("cp");
+  if (cp) cp.onclick = () => { navigator.clipboard.writeText(tab === "docs" ? data.docs : data.refactored_code); cp.textContent = "Copied!"; };
+}
+
+$("tabs").onclick = e => {
+  const t = e.target.dataset.t; if (!t) return;
+  tab = t;
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.t === t));
+  render();
+};
+$("sample").onclick = () => { $("code").value = SAMPLE; };
+
+$("go").onclick = async () => {
+  const code = $("code").value;
+  $("go").disabled = true; $("status").textContent = "Reviewing... (10-30s)"; $("status").className = "sub";
+  try {
+    const r = await fetch("/api/review", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ code, language: $("lang").value })
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || "Request failed");
+    data = j; tab = "bugs";
+    document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.t === "bugs"));
+    $("score").textContent = (j.score ?? "–") + "/100";
+    $("summary").textContent = j.summary || "";
+    $("out").classList.remove("hide");
+    $("status").textContent = "";
+    render();
+  } catch (e) {
+    $("status").textContent = e.message; $("status").className = "err";
+  } finally { $("go").disabled = false; }
+};
+</script>
+</body>
+</html>
